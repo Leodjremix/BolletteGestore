@@ -41,8 +41,12 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL DEFAULT 'Spesa',
             amount REAL NOT NULL,
             date TEXT NOT NULL,
+            due_date TEXT,
+            payment_date TEXT,
+            consumption REAL,
             category TEXT NOT NULL,
             invoice_number TEXT,
             person_id INTEGER,
@@ -53,6 +57,12 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
         )",
         [],
     )?;
+
+    // Simple migration for existing users from previous step
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN title TEXT NOT NULL DEFAULT 'Spesa'", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN due_date TEXT", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN payment_date TEXT", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN consumption REAL", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS energy_readings (
@@ -123,8 +133,12 @@ pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
 
 pub fn add_expense(
     conn: &Connection,
+    title: &str,
     amount: f64,
     date: &str,
+    due_date: Option<&str>,
+    payment_date: Option<&str>,
+    consumption: Option<f64>,
     category: &str,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
@@ -132,27 +146,31 @@ pub fn add_expense(
     attachment_path: Option<&str>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO expenses (amount, date, category, invoice_number, person_id, house_id, attachment_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        rusqlite::params![amount, date, category, invoice_number, person_id, house_id, attachment_path],
+        "INSERT INTO expenses (title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
     let mut stmt = conn.prepare(
-        "SELECT id, amount, date, category, invoice_number, person_id, house_id, attachment_path FROM expenses ORDER BY date DESC"
+        "SELECT id, title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path FROM expenses ORDER BY date DESC"
     )?;
     let expense_iter = stmt.query_map([], |row| {
         Ok(Expense {
             id: row.get(0)?,
-            amount: row.get(1)?,
-            date: row.get(2)?,
-            category: row.get(3)?,
-            invoice_number: row.get(4)?,
-            person_id: row.get(5)?,
-            house_id: row.get(6)?,
-            attachment_path: row.get(7)?,
+            title: row.get(1)?,
+            amount: row.get(2)?,
+            date: row.get(3)?,
+            due_date: row.get(4)?,
+            payment_date: row.get(5)?,
+            consumption: row.get(6)?,
+            category: row.get(7)?,
+            invoice_number: row.get(8)?,
+            person_id: row.get(9)?,
+            house_id: row.get(10)?,
+            attachment_path: row.get(11)?,
         })
     })?;
 

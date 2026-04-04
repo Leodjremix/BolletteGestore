@@ -96,14 +96,35 @@ fn get_houses(state: State<'_, AppState>) -> Result<Vec<models::House>, String> 
 fn add_expense(
     app_handle: AppHandle,
     state: State<'_, AppState>,
+    title: &str,
     amount: f64,
     date: &str,
+    due_date: Option<&str>,
+    payment_date: Option<&str>,
+    consumption: Option<f64>,
     category: &str,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
     house_id: Option<i64>,
     attachment_path: Option<&str>,
 ) -> Result<i64, String> {
+
+    // Auto-categorization logic
+    let mut final_category = category.to_string();
+    if final_category.is_empty() || final_category == "Altro" {
+        let t_lower = title.to_lowercase();
+        if t_lower.contains("enel") || t_lower.contains("servizio elettrico") || t_lower.contains("luce") {
+            final_category = "Bolletta Luce".to_string();
+        } else if t_lower.contains("gas") || t_lower.contains("eni") || t_lower.contains("plenitude") {
+            final_category = "Bolletta Gas".to_string();
+        } else if t_lower.contains("tim") || t_lower.contains("vodafone") || t_lower.contains("fastweb") || t_lower.contains("wind") {
+            final_category = "Bolletta Internet".to_string();
+        } else if t_lower.contains("acqua") || t_lower.contains("idrico") {
+            final_category = "Bolletta Acqua".to_string();
+        } else if t_lower.contains("tari") || t_lower.contains("imu") || t_lower.contains("tassa") {
+            final_category = "Tasse".to_string();
+        }
+    }
 
     let mut final_attachment_path = None;
 
@@ -132,9 +153,13 @@ fn add_expense(
     if let Some(conn) = db_conn.as_ref() {
         db::add_expense(
             conn,
+            title,
             amount,
             date,
-            category,
+            due_date,
+            payment_date,
+            consumption,
+            &final_category,
             invoice_number,
             person_id,
             house_id,

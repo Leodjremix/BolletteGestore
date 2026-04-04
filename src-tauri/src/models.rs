@@ -17,8 +17,12 @@ pub struct House {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Expense {
     pub id: i64,
+    pub title: String,
     pub amount: f64,
     pub date: String,
+    pub due_date: Option<String>,
+    pub payment_date: Option<String>,
+    pub consumption: Option<f64>,
     pub category: String,
     pub invoice_number: Option<String>,
     pub person_id: Option<i64>,
