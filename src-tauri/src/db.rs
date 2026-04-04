@@ -17,7 +17,7 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     conn.pragma_update(None, "key", key)?;
 
     // Test if the key is correct by attempting to read from the schema
-    conn.execute("SELECT count(*) FROM sqlite_master", [])?;
+    conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))?;
 
     // Create tables if they don't exist
     conn.execute(
