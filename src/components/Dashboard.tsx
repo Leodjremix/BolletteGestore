@@ -2,9 +2,10 @@ import { useState } from "react";
 import PeopleManager from "./PeopleManager";
 import HousesManager from "./HousesManager";
 import ExpensesManager from "./ExpensesManager";
+import EnergyAnalysis from "./EnergyAnalysis";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses">("people");
+  const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses" | "energy">("overview");
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 w-full">
@@ -46,6 +47,14 @@ export default function Dashboard() {
           >
             Spese e Documenti
           </button>
+          <button
+            onClick={() => setActiveTab("energy")}
+            className={`w-full text-left px-4 py-2 rounded-lg transition ${
+              activeTab === "energy" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Analisi Energetica
+          </button>
         </nav>
       </div>
 
@@ -54,12 +63,16 @@ export default function Dashboard() {
         {activeTab === "overview" && (
           <div>
             <h2 className="text-2xl font-bold mb-4">Panoramica</h2>
-            <p className="text-gray-600">Benvenuto nella dashboard principale. Qui in futuro ci saranno grafici e statistiche.</p>
+            <p className="text-gray-600">
+              Benvenuto nella dashboard principale. Utilizza il menu laterale per navigare tra le varie sezioni.
+              Nella sezione "Analisi Energetica" troverai i grafici interattivi e predittivi.
+            </p>
           </div>
         )}
         {activeTab === "people" && <PeopleManager />}
         {activeTab === "houses" && <HousesManager />}
         {activeTab === "expenses" && <ExpensesManager />}
+        {activeTab === "energy" && <EnergyAnalysis />}
       </div>
     </div>
   );

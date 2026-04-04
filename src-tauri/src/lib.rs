@@ -155,6 +155,33 @@ fn get_expenses(state: State<'_, AppState>) -> Result<Vec<models::Expense>, Stri
     }
 }
 
+#[tauri::command]
+fn add_energy_reading(
+    state: State<'_, AppState>,
+    date: &str,
+    temperature: f64,
+    humidity: f64,
+    electricity_kwh: f64,
+    gas_smc: f64,
+) -> Result<i64, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_energy_reading(conn, date, temperature, humidity, electricity_kwh, gas_smc).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn get_energy_readings(state: State<'_, AppState>) -> Result<Vec<models::EnergyReading>, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::get_energy_readings(conn).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -173,7 +200,9 @@ pub fn run() {
             add_house,
             get_houses,
             add_expense,
-            get_expenses
+            get_expenses,
+            add_energy_reading,
+            get_energy_readings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

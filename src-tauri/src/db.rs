@@ -54,10 +54,22 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
         [],
     )?;
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS energy_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            temperature REAL NOT NULL,
+            humidity REAL NOT NULL,
+            electricity_kwh REAL NOT NULL,
+            gas_smc REAL NOT NULL
+        )",
+        [],
+    )?;
+
     Ok(conn)
 }
 
-use crate::models::{House, Person, Expense};
+use crate::models::{House, Person, Expense, EnergyReading};
 
 pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i64> {
     conn.execute(
@@ -149,4 +161,42 @@ pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
         expenses.push(expense?);
     }
     Ok(expenses)
+}
+
+pub fn add_energy_reading(
+    conn: &Connection,
+    date: &str,
+    temperature: f64,
+    humidity: f64,
+    electricity_kwh: f64,
+    gas_smc: f64,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO energy_readings (date, temperature, humidity, electricity_kwh, gas_smc)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_energy_readings(conn: &Connection) -> Result<Vec<EnergyReading>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, date, temperature, humidity, electricity_kwh, gas_smc FROM energy_readings ORDER BY date ASC"
+    )?;
+    let reading_iter = stmt.query_map([], |row| {
+        Ok(EnergyReading {
+            id: row.get(0)?,
+            date: row.get(1)?,
+            temperature: row.get(2)?,
+            humidity: row.get(3)?,
+            electricity_kwh: row.get(4)?,
+            gas_smc: row.get(5)?,
+        })
+    })?;
+
+    let mut readings = Vec::new();
+    for reading in reading_iter {
+        readings.push(reading?);
+    }
+    Ok(readings)
 }

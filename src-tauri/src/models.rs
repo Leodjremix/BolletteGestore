@@ -25,3 +25,13 @@ pub struct Expense {
     pub house_id: Option<i64>,
     pub attachment_path: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EnergyReading {
+    pub id: i64,
+    pub date: String,
+    pub temperature: f64,
+    pub humidity: f64,
+    pub electricity_kwh: f64,
+    pub gas_smc: f64,
+}
