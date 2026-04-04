@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import Dashboard from "./components/Dashboard";
 import "./App.css";
 
 function App() {
@@ -33,6 +34,8 @@ function App() {
       if (isFirstRun) {
         // Registration
         await invoke("register", { password });
+        // Unlock database immediately after registering
+        await invoke<boolean>("login", { password });
         setIsFirstRun(false);
         setIsAuthenticated(true); // Auto login after registration
       } else {
@@ -54,15 +57,7 @@ function App() {
   }
 
   if (isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900">
-        <div className="bg-white p-8 rounded-xl shadow-lg text-center">
-          <h1 className="text-3xl font-bold text-primary mb-4">Benvenuto!</h1>
-          <p className="text-gray-600">Database sbloccato con successo.</p>
-          {/* Dashboard placeholder per i prossimi step */}
-        </div>
-      </div>
-    );
+    return <Dashboard />;
   }
 
   return (

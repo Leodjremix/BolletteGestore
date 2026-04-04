@@ -56,3 +56,55 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
 
     Ok(conn)
 }
+
+use crate::models::{House, Person};
+
+pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO people (name, role) VALUES (?1, ?2)",
+        rusqlite::params![name, role],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_people(conn: &Connection) -> Result<Vec<Person>> {
+    let mut stmt = conn.prepare("SELECT id, name, role FROM people")?;
+    let person_iter = stmt.query_map([], |row| {
+        Ok(Person {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            role: row.get(2)?,
+        })
+    })?;
+
+    let mut people = Vec::new();
+    for person in person_iter {
+        people.push(person?);
+    }
+    Ok(people)
+}
+
+pub fn add_house(conn: &Connection, name: &str, address: Option<&str>) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO houses (name, address) VALUES (?1, ?2)",
+        rusqlite::params![name, address],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
+    let mut stmt = conn.prepare("SELECT id, name, address FROM houses")?;
+    let house_iter = stmt.query_map([], |row| {
+        Ok(House {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            address: row.get(2)?,
+        })
+    })?;
+
+    let mut houses = Vec::new();
+    for house in house_iter {
+        houses.push(house?);
+    }
+    Ok(houses)
+}

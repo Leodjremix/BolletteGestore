@@ -3,6 +3,7 @@ use tauri::{AppHandle, State};
 
 mod auth;
 mod db;
+mod models;
 
 struct AppState {
     db_conn: Mutex<Option<rusqlite::Connection>>,
@@ -51,6 +52,46 @@ fn login(app_handle: AppHandle, state: State<'_, AppState>, password: &str) -> R
     }
 }
 
+#[tauri::command]
+fn add_person(state: State<'_, AppState>, name: &str, role: Option<&str>) -> Result<i64, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_person(conn, name, role).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn get_people(state: State<'_, AppState>) -> Result<Vec<models::Person>, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::get_people(conn).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn add_house(state: State<'_, AppState>, name: &str, address: Option<&str>) -> Result<i64, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_house(conn, name, address).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn get_houses(state: State<'_, AppState>) -> Result<Vec<models::House>, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::get_houses(conn).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -58,7 +99,15 @@ pub fn run() {
             db_conn: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![check_first_run, register, login])
+        .invoke_handler(tauri::generate_handler![
+            check_first_run,
+            register,
+            login,
+            add_person,
+            get_people,
+            add_house,
+            get_houses
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
