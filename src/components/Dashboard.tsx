@@ -1,6 +1,7 @@
 import { useState } from "react";
 import PeopleManager from "./PeopleManager";
 import HousesManager from "./HousesManager";
+import ExpensesManager from "./ExpensesManager";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses">("people");
@@ -43,7 +44,7 @@ export default function Dashboard() {
               activeTab === "expenses" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
             }`}
           >
-            Spese (Presto)
+            Spese e Documenti
           </button>
         </nav>
       </div>
@@ -58,12 +59,7 @@ export default function Dashboard() {
         )}
         {activeTab === "people" && <PeopleManager />}
         {activeTab === "houses" && <HousesManager />}
-        {activeTab === "expenses" && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">Gestione Spese</h2>
-            <p className="text-gray-600">Modulo in fase di sviluppo...</p>
-          </div>
-        )}
+        {activeTab === "expenses" && <ExpensesManager />}
       </div>
     </div>
   );

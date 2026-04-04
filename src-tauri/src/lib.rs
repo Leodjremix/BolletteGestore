@@ -92,12 +92,77 @@ fn get_houses(state: State<'_, AppState>) -> Result<Vec<models::House>, String> 
     }
 }
 
+#[tauri::command]
+fn add_expense(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    amount: f64,
+    date: &str,
+    category: &str,
+    invoice_number: Option<&str>,
+    person_id: Option<i64>,
+    house_id: Option<i64>,
+    attachment_path: Option<&str>,
+) -> Result<i64, String> {
+
+    let mut final_attachment_path = None;
+
+    // Copy the attachment to our secure app directory if provided
+    if let Some(path) = attachment_path {
+        use tauri::Manager;
+        let original_path = std::path::Path::new(path);
+        if original_path.exists() {
+            let mut app_dir = app_handle.path().app_data_dir().expect("Failed to get app data dir");
+            app_dir.push("attachments");
+            std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+
+            if let Some(file_name) = original_path.file_name() {
+                // Prepend timestamp to avoid collisions
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+                let new_file_name = format!("{}_{}", ts, file_name.to_string_lossy());
+                app_dir.push(new_file_name);
+
+                std::fs::copy(original_path, &app_dir).map_err(|e| e.to_string())?;
+                final_attachment_path = Some(app_dir.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_expense(
+            conn,
+            amount,
+            date,
+            category,
+            invoice_number,
+            person_id,
+            house_id,
+            final_attachment_path.as_deref()
+        ).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn get_expenses(state: State<'_, AppState>) -> Result<Vec<models::Expense>, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::get_expenses(conn).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             db_conn: Mutex::new(None),
         })
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             check_first_run,
@@ -106,7 +171,9 @@ pub fn run() {
             add_person,
             get_people,
             add_house,
-            get_houses
+            get_houses,
+            add_expense,
+            get_expenses
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

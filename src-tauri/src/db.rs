@@ -57,7 +57,7 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     Ok(conn)
 }
 
-use crate::models::{House, Person};
+use crate::models::{House, Person, Expense};
 
 pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i64> {
     conn.execute(
@@ -107,4 +107,46 @@ pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
         houses.push(house?);
     }
     Ok(houses)
+}
+
+pub fn add_expense(
+    conn: &Connection,
+    amount: f64,
+    date: &str,
+    category: &str,
+    invoice_number: Option<&str>,
+    person_id: Option<i64>,
+    house_id: Option<i64>,
+    attachment_path: Option<&str>,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO expenses (amount, date, category, invoice_number, person_id, house_id, attachment_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![amount, date, category, invoice_number, person_id, house_id, attachment_path],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, amount, date, category, invoice_number, person_id, house_id, attachment_path FROM expenses ORDER BY date DESC"
+    )?;
+    let expense_iter = stmt.query_map([], |row| {
+        Ok(Expense {
+            id: row.get(0)?,
+            amount: row.get(1)?,
+            date: row.get(2)?,
+            category: row.get(3)?,
+            invoice_number: row.get(4)?,
+            person_id: row.get(5)?,
+            house_id: row.get(6)?,
+            attachment_path: row.get(7)?,
+        })
+    })?;
+
+    let mut expenses = Vec::new();
+    for expense in expense_iter {
+        expenses.push(expense?);
+    }
+    Ok(expenses)
 }
