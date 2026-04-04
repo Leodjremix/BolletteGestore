@@ -3,6 +3,7 @@ import PeopleManager from "./PeopleManager";
 import HousesManager from "./HousesManager";
 import ExpensesManager from "./ExpensesManager";
 import EnergyAnalysis from "./EnergyAnalysis";
+import Overview from "./Overview";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses" | "energy">("overview");
@@ -60,15 +61,7 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-8">
-        {activeTab === "overview" && (
-          <div>
-            <h2 className="text-2xl font-bold mb-4">Panoramica</h2>
-            <p className="text-gray-600">
-              Benvenuto nella dashboard principale. Utilizza il menu laterale per navigare tra le varie sezioni.
-              Nella sezione "Analisi Energetica" troverai i grafici interattivi e predittivi.
-            </p>
-          </div>
-        )}
+        {activeTab === "overview" && <Overview />}
         {activeTab === "people" && <PeopleManager />}
         {activeTab === "houses" && <HousesManager />}
         {activeTab === "expenses" && <ExpensesManager />}
