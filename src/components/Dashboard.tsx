@@ -4,16 +4,22 @@ import HousesManager from "./HousesManager";
 import ExpensesManager from "./ExpensesManager";
 import EnergyAnalysis from "./EnergyAnalysis";
 import Overview from "./Overview";
+import { useTheme } from "./ThemeProvider";
+import { MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses" | "energy">("overview");
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="flex h-screen bg-gray-50 text-gray-900 w-full">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-colors">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-primary">Gestore Spese</h1>
+      <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+        <div className="p-6 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-primary">Gestore Spese</h1>
+          <button onClick={toggleTheme} className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+            {theme === "light" ? <MoonIcon className="w-5 h-5" /> : <SunIcon className="w-5 h-5" />}
+          </button>
         </div>
         <nav className="flex-1 px-4 space-y-2">
           <button

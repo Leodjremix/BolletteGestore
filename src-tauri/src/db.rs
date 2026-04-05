@@ -89,6 +89,19 @@ pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i
     Ok(conn.last_insert_rowid())
 }
 
+pub fn update_person(conn: &Connection, id: i64, name: &str, role: Option<&str>) -> Result<()> {
+    conn.execute(
+        "UPDATE people SET name = ?1, role = ?2 WHERE id = ?3",
+        rusqlite::params![name, role, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_person(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM people WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
+}
+
 pub fn get_people(conn: &Connection) -> Result<Vec<Person>> {
     let mut stmt = conn.prepare("SELECT id, name, role FROM people")?;
     let person_iter = stmt.query_map([], |row| {
@@ -112,6 +125,19 @@ pub fn add_house(conn: &Connection, name: &str, address: Option<&str>) -> Result
         rusqlite::params![name, address],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn update_house(conn: &Connection, id: i64, name: &str, address: Option<&str>) -> Result<()> {
+    conn.execute(
+        "UPDATE houses SET name = ?1, address = ?2 WHERE id = ?3",
+        rusqlite::params![name, address, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_house(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM houses WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
 }
 
 pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
@@ -151,6 +177,34 @@ pub fn add_expense(
         rusqlite::params![title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn update_expense(
+    conn: &Connection,
+    id: i64,
+    title: &str,
+    amount: f64,
+    date: &str,
+    due_date: Option<&str>,
+    payment_date: Option<&str>,
+    consumption: Option<f64>,
+    category: &str,
+    invoice_number: Option<&str>,
+    person_id: Option<i64>,
+    house_id: Option<i64>,
+    attachment_path: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE expenses SET title = ?1, amount = ?2, date = ?3, due_date = ?4, payment_date = ?5, consumption = ?6, category = ?7, invoice_number = ?8, person_id = ?9, house_id = ?10, attachment_path = ?11
+         WHERE id = ?12",
+        rusqlite::params![title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_expense(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM expenses WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
 }
 
 pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
@@ -195,6 +249,27 @@ pub fn add_energy_reading(
         rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn update_energy_reading(
+    conn: &Connection,
+    id: i64,
+    date: &str,
+    temperature: f64,
+    humidity: f64,
+    electricity_kwh: f64,
+    gas_smc: f64,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE energy_readings SET date = ?1, temperature = ?2, humidity = ?3, electricity_kwh = ?4, gas_smc = ?5 WHERE id = ?6",
+        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_energy_reading(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM energy_readings WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
 }
 
 pub fn get_energy_readings(conn: &Connection) -> Result<Vec<EnergyReading>> {

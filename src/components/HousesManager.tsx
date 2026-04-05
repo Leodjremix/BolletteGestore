@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
 
 export interface House {
   id: number;
@@ -12,6 +13,7 @@ export default function HousesManager() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const fetchHouses = async () => {
     try {
@@ -26,11 +28,34 @@ export default function HousesManager() {
     fetchHouses();
   }, []);
 
+  const handleEditClick = (house: House) => {
+    setEditingId(house.id);
+    setName(house.name);
+    setAddress(house.address || "");
+  };
+
+  const handleDeleteClick = async (id: number) => {
+    if (confirm("Sei sicuro di voler eliminare questa abitazione? Potrebbe essere associata a delle spese.")) {
+      try {
+        await invoke("delete_house", { id });
+        fetchHouses();
+      } catch (err: any) {
+        alert("Errore durante l'eliminazione: " + err.toString());
+      }
+    }
+  };
+
   const handleAddHouse = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
-      await invoke("add_house", { name, address: address || null });
+      const payload = { name, address: address || null };
+      if (editingId) {
+        await invoke("update_house", { id: editingId, ...payload });
+      } else {
+        await invoke("add_house", payload);
+      }
+      setEditingId(null);
       setName("");
       setAddress("");
       fetchHouses();
@@ -63,8 +88,21 @@ export default function HousesManager() {
           type="submit"
           className="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition"
         >
-          Aggiungi
+          {editingId ? "Aggiorna" : "Aggiungi"}
         </button>
+        {editingId && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingId(null);
+              setName("");
+              setAddress("");
+            }}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-6 rounded-lg transition"
+          >
+            Annulla
+          </button>
+        )}
       </form>
 
       {error && <div className="text-red-500 mb-4">{error}</div>}
@@ -76,6 +114,7 @@ export default function HousesManager() {
               <th className="py-3 px-4 font-semibold text-gray-600">ID</th>
               <th className="py-3 px-4 font-semibold text-gray-600">Nome</th>
               <th className="py-3 px-4 font-semibold text-gray-600">Indirizzo</th>
+              <th className="py-3 px-4 font-semibold text-gray-600 text-right">Azioni</th>
             </tr>
           </thead>
           <tbody>
@@ -84,11 +123,21 @@ export default function HousesManager() {
                 <td className="py-3 px-4 text-gray-500">{house.id}</td>
                 <td className="py-3 px-4 text-gray-800">{house.name}</td>
                 <td className="py-3 px-4 text-gray-600">{house.address || "-"}</td>
+                <td className="py-3 px-4 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => handleEditClick(house)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                      <PencilIcon className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeleteClick(house.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                      <TrashIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {houses.length === 0 && (
               <tr>
-                <td colSpan={3} className="py-4 text-center text-gray-500">
+                <td colSpan={4} className="py-4 text-center text-gray-500">
                   Nessuna abitazione trovata
                 </td>
               </tr>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Dashboard from "./components/Dashboard";
+import { ThemeProvider } from "./components/ThemeProvider";
 import "./App.css";
 
 function App() {
@@ -57,11 +58,15 @@ function App() {
   }
 
   if (isAuthenticated) {
-    return <Dashboard />;
+    return (
+      <ThemeProvider>
+        <Dashboard />
+      </ThemeProvider>
+    );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-4">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">

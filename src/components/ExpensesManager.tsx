@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { PlusIcon, PaperClipIcon, CheckCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PaperClipIcon, CheckCircleIcon, ClockIcon, TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
 import Modal from "./ui/Modal";
 import { Person } from "./PeopleManager";
 import { House } from "./HousesManager";
@@ -28,6 +28,8 @@ export default function ExpensesManager() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // Form State
   const [title, setTitle] = useState("");
@@ -79,6 +81,33 @@ export default function ExpensesManager() {
     }
   };
 
+  const handleEditClick = (expense: Expense) => {
+    setEditingId(expense.id);
+    setTitle(expense.title);
+    setAmount(expense.amount.toString());
+    setDate(expense.date);
+    setDueDate(expense.due_date || "");
+    setPaymentDate(expense.payment_date || "");
+    setConsumption(expense.consumption ? expense.consumption.toString() : "");
+    setCategory(expense.category);
+    setInvoiceNumber(expense.invoice_number || "");
+    setPersonId(expense.person_id ? expense.person_id.toString() : "");
+    setHouseId(expense.house_id ? expense.house_id.toString() : "");
+    setAttachment(expense.attachment_path);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteClick = async (id: number) => {
+    if (confirm("Sei sicuro di voler eliminare questa spesa?")) {
+      try {
+        await invoke("delete_expense", { id });
+        fetchData();
+      } catch (err: any) {
+        alert("Errore durante l'eliminazione: " + err.toString());
+      }
+    }
+  };
+
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -89,7 +118,7 @@ export default function ExpensesManager() {
     }
 
     try {
-      await invoke("add_expense", {
+      const payload = {
         title,
         amount: parseFloat(amount),
         date,
@@ -101,9 +130,16 @@ export default function ExpensesManager() {
         personId: personId ? parseInt(personId) : null,
         houseId: houseId ? parseInt(houseId) : null,
         attachmentPath: attachment,
-      });
+      };
+
+      if (editingId) {
+        await invoke("update_expense", { id: editingId, ...payload });
+      } else {
+        await invoke("add_expense", payload);
+      }
 
       // Reset Form
+      setEditingId(null);
       setTitle("");
       setAmount("");
       setDueDate("");
@@ -127,7 +163,18 @@ export default function ExpensesManager() {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Spese e Documenti</h2>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setEditingId(null);
+            setTitle("");
+            setAmount("");
+            setDueDate("");
+            setPaymentDate("");
+            setConsumption("");
+            setCategory("");
+            setInvoiceNumber("");
+            setAttachment(null);
+            setIsModalOpen(true);
+          }}
           className="flex items-center gap-2 bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl transition shadow-md"
         >
           <PlusIcon className="w-5 h-5" />
@@ -136,7 +183,7 @@ export default function ExpensesManager() {
       </div>
 
       {/* Modal Inserimento */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Aggiungi Nuova Spesa">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? "Modifica Spesa" : "Aggiungi Nuova Spesa"}>
         <form onSubmit={handleAddExpense} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
@@ -314,6 +361,7 @@ export default function ExpensesManager() {
               <th className="py-4 px-4 font-semibold text-gray-600">Scadenza</th>
               <th className="py-4 px-4 font-semibold text-gray-600">Riferimento</th>
               <th className="py-4 px-4 font-semibold text-gray-600">Allegato</th>
+              <th className="py-4 px-4 font-semibold text-gray-600 text-right">Azioni</th>
             </tr>
           </thead>
           <tbody>
@@ -359,12 +407,22 @@ export default function ExpensesManager() {
                       <span className="text-gray-300">-</span>
                     )}
                   </td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => handleEditClick(expense)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                        <PencilIcon className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDeleteClick(expense.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
             {expenses.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-gray-500 bg-gray-50/50">
+                <td colSpan={7} className="py-8 text-center text-gray-500 bg-gray-50/50">
                   Nessuna spesa o documento registrato. Clicca su "Nuova Spesa" per iniziare.
                 </td>
               </tr>

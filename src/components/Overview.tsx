@@ -9,6 +9,7 @@ import {
   ExclamationCircleIcon,
   CheckCircleIcon
 } from "@heroicons/react/24/outline";
+import ChartsAnalysis from "./ChartsAnalysis";
 
 export default function Overview() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -215,6 +216,10 @@ export default function Overview() {
         </div>
 
       </div>
+
+      {/* Advanced Charts Section */}
+      <ChartsAnalysis />
+
     </div>
   );
 }

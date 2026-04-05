@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
 import {
   LineChart,
   Line,
@@ -28,6 +29,7 @@ export default function EnergyAnalysis() {
   const [electricityKwh, setElectricityKwh] = useState("");
   const [gasSmc, setGasSmc] = useState("");
   const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const fetchReadings = async () => {
     try {
@@ -42,20 +44,47 @@ export default function EnergyAnalysis() {
     fetchReadings();
   }, []);
 
+  const handleEditClick = (reading: EnergyReading) => {
+    setEditingId(reading.id);
+    setDate(reading.date);
+    setTemperature(reading.temperature.toString());
+    setHumidity(reading.humidity.toString());
+    setElectricityKwh(reading.electricity_kwh.toString());
+    setGasSmc(reading.gas_smc.toString());
+  };
+
+  const handleDeleteClick = async (id: number) => {
+    if (confirm("Sei sicuro di voler eliminare questa lettura?")) {
+      try {
+        await invoke("delete_energy_reading", { id });
+        fetchReadings();
+      } catch (err: any) {
+        alert("Errore durante l'eliminazione: " + err.toString());
+      }
+    }
+  };
+
   const handleAddReading = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
     try {
-      await invoke("add_energy_reading", {
+      const payload = {
         date,
         temperature: parseFloat(temperature),
         humidity: parseFloat(humidity),
         electricityKwh: parseFloat(electricityKwh),
         gasSmc: parseFloat(gasSmc),
-      });
+      };
+
+      if (editingId) {
+        await invoke("update_energy_reading", { id: editingId, ...payload });
+      } else {
+        await invoke("add_energy_reading", payload);
+      }
 
       // Reset
+      setEditingId(null);
       setTemperature("");
       setHumidity("");
       setElectricityKwh("");
@@ -112,7 +141,24 @@ export default function EnergyAnalysis() {
         {/* Form Column */}
         <div className="xl:col-span-1">
           <form onSubmit={handleAddReading} className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">Nuova Lettura</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-700">{editingId ? "Modifica Lettura" : "Nuova Lettura"}</h3>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    setTemperature("");
+                    setHumidity("");
+                    setElectricityKwh("");
+                    setGasSmc("");
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Annulla
+                </button>
+              )}
+            </div>
 
             <div className="space-y-4">
               <div>
@@ -181,15 +227,16 @@ export default function EnergyAnalysis() {
                 type="submit"
                 className="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition mt-4"
               >
-                Salva Lettura
+                {editingId ? "Aggiorna Lettura" : "Salva Lettura"}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Chart Column */}
-        <div className="xl:col-span-2 flex flex-col">
-          <h3 className="text-lg font-semibold mb-4 text-gray-700">Andamento e Previsioni Consumi</h3>
+        {/* Chart & Table Column */}
+        <div className="xl:col-span-2 flex flex-col gap-8">
+          <div>
+            <h3 className="text-lg font-semibold mb-4 text-gray-700">Andamento e Previsioni Consumi</h3>
           {readings.length === 0 ? (
             <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-gray-500">Aggiungi almeno una lettura per visualizzare il grafico.</p>
@@ -232,6 +279,47 @@ export default function EnergyAnalysis() {
                   Se noti picchi anomali legati a temperature esterne, valuta di ridurre la temperatura del termostato di 1°C per risparmiare circa il 6-8% sui costi di riscaldamento.
                 </div>
               )}
+            </div>
+          )}
+          </div>
+
+          {/* Table */}
+          {readings.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-700">Storico Letture</h3>
+              <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200 text-sm">
+                      <th className="py-3 px-4 font-semibold text-gray-600">Data</th>
+                      <th className="py-3 px-4 font-semibold text-gray-600">Temp / Umidità</th>
+                      <th className="py-3 px-4 font-semibold text-gray-600">Luce (kWh)</th>
+                      <th className="py-3 px-4 font-semibold text-gray-600">Gas (Smc)</th>
+                      <th className="py-3 px-4 font-semibold text-gray-600 text-right">Azioni</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {readings.map((r) => (
+                      <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 text-sm">
+                        <td className="py-3 px-4 text-gray-800">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="py-3 px-4 text-gray-600">{r.temperature}°C / {r.humidity}%</td>
+                        <td className="py-3 px-4 font-medium text-blue-600">{r.electricity_kwh}</td>
+                        <td className="py-3 px-4 font-medium text-orange-600">{r.gas_smc}</td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => handleEditClick(r)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                              <PencilIcon className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDeleteClick(r.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
