@@ -6,6 +6,11 @@ import Modal from "./ui/Modal";
 import { Person } from "./PeopleManager";
 import { House } from "./HousesManager";
 
+export interface Category {
+  id: number;
+  name: string;
+}
+
 export interface Expense {
   id: number;
   title: string;
@@ -13,18 +18,23 @@ export interface Expense {
   date: string;
   due_date: string | null;
   payment_date: string | null;
+  period: string | null;
+  client_code: string | null;
   consumption: number | null;
-  category: string;
+  category_id: number | null;
+  category_name: string | null;
   invoice_number: string | null;
   person_id: number | null;
   house_id: number | null;
   attachment_path: string | null;
+  notes: string | null;
 }
 
 export default function ExpensesManager() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,24 +47,29 @@ export default function ExpensesManager() {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
+  const [period, setPeriod] = useState("");
+  const [clientCode, setClientCode] = useState("");
   const [consumption, setConsumption] = useState("");
-  const [category, setCategory] = useState(""); // Default vuoto per auto-categoria
+  const [categoryId, setCategoryId] = useState(""); // ID categoria
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [personId, setPersonId] = useState("");
   const [houseId, setHouseId] = useState("");
   const [attachment, setAttachment] = useState<string | null>(null);
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
 
   const fetchData = async () => {
     try {
-      const [expData, pplData, hseData] = await Promise.all([
+      const [expData, pplData, hseData, catData] = await Promise.all([
         invoke<Expense[]>("get_expenses"),
         invoke<Person[]>("get_people"),
         invoke<House[]>("get_houses"),
+        invoke<Category[]>("get_categories"),
       ]);
       setExpenses(expData);
       setPeople(pplData);
       setHouses(hseData);
+      setCategories(catData);
     } catch (err: any) {
       setError(err.toString());
     }
@@ -88,12 +103,15 @@ export default function ExpensesManager() {
     setDate(expense.date);
     setDueDate(expense.due_date || "");
     setPaymentDate(expense.payment_date || "");
+    setPeriod(expense.period || "");
+    setClientCode(expense.client_code || "");
     setConsumption(expense.consumption ? expense.consumption.toString() : "");
-    setCategory(expense.category);
+    setCategoryId(expense.category_id ? expense.category_id.toString() : "");
     setInvoiceNumber(expense.invoice_number || "");
     setPersonId(expense.person_id ? expense.person_id.toString() : "");
     setHouseId(expense.house_id ? expense.house_id.toString() : "");
     setAttachment(expense.attachment_path);
+    setNotes(expense.notes || "");
     setIsModalOpen(true);
   };
 
@@ -124,12 +142,15 @@ export default function ExpensesManager() {
         date,
         dueDate: dueDate || null,
         paymentDate: paymentDate || null,
+        period: period || null,
+        clientCode: clientCode || null,
         consumption: consumption ? parseFloat(consumption) : null,
-        category: category || "Altro", // Il backend auto-categorizza se "Altro" o vuoto
+        categoryId: categoryId ? parseInt(categoryId) : null,
         invoiceNumber: invoiceNumber || null,
         personId: personId ? parseInt(personId) : null,
         houseId: houseId ? parseInt(houseId) : null,
         attachmentPath: attachment,
+        notes: notes || null,
       };
 
       if (editingId) {
@@ -142,12 +163,18 @@ export default function ExpensesManager() {
       setEditingId(null);
       setTitle("");
       setAmount("");
+      setDate(new Date().toISOString().split("T")[0]);
       setDueDate("");
       setPaymentDate("");
+      setPeriod("");
+      setClientCode("");
       setConsumption("");
-      setCategory("");
+      setCategoryId("");
       setInvoiceNumber("");
+      setPersonId("");
+      setHouseId("");
       setAttachment(null);
+      setNotes("");
       setIsModalOpen(false);
       fetchData();
     } catch (err: any) {
@@ -167,12 +194,18 @@ export default function ExpensesManager() {
             setEditingId(null);
             setTitle("");
             setAmount("");
+            setDate(new Date().toISOString().split("T")[0]);
             setDueDate("");
             setPaymentDate("");
+            setPeriod("");
+            setClientCode("");
             setConsumption("");
-            setCategory("");
+            setCategoryId("");
             setInvoiceNumber("");
+            setPersonId("");
+            setHouseId("");
             setAttachment(null);
+            setNotes("");
             setIsModalOpen(true);
           }}
           className="flex items-center gap-2 bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-xl transition shadow-md"
@@ -256,30 +289,44 @@ export default function ExpensesManager() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoria (Forza manuale)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoria (Opzionale)</label>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:bg-white outline-none transition"
               >
-                <option value="">-- Automatica --</option>
-                <option value="Bolletta Luce">Bolletta Luce</option>
-                <option value="Bolletta Gas">Bolletta Gas</option>
-                <option value="Bolletta Internet">Bolletta Internet</option>
-                <option value="Bolletta Acqua">Bolletta Acqua</option>
-                <option value="Assicurazione">Assicurazione</option>
-                <option value="Tasse">Tasse</option>
-                <option value="Manutenzione">Manutenzione</option>
-                <option value="Altro">Altro</option>
+                <option value="">-- Seleziona Categoria --</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">N. Fattura / Scontrino</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">N. Bolletta / Fattura</label>
               <input
                 type="text"
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:bg-white outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Periodo di Riferimento</label>
+              <input
+                type="text"
+                placeholder="es. Gen-Feb 2024"
+                value={period}
+                onChange={(e) => setPeriod(e.target.value)}
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:bg-white outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Codice Cliente</label>
+              <input
+                type="text"
+                value={clientCode}
+                onChange={(e) => setClientCode(e.target.value)}
                 className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:bg-white outline-none transition"
               />
             </div>
@@ -296,7 +343,7 @@ export default function ExpensesManager() {
               </select>
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Immobile Associato</label>
               <select
                 value={houseId}
@@ -306,6 +353,17 @@ export default function ExpensesManager() {
                 <option value="">-- Nessuno --</option>
                 {houses.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
               </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (Opzionali)</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:bg-white outline-none transition"
+                placeholder="Aggiungi dettagli extra..."
+              ></textarea>
             </div>
 
             {/* Allegato */}
@@ -388,7 +446,7 @@ export default function ExpensesManager() {
                   </td>
                   <td className="py-3 px-4">
                     <p className="font-medium text-gray-900">{expense.title}</p>
-                    <p className="text-xs text-gray-500">{expense.category}</p>
+                    <p className="text-xs text-gray-500">{expense.category_name || "Non categorizzata"}</p>
                   </td>
                   <td className="py-3 px-4 font-bold text-gray-900">€{expense.amount.toFixed(2)}</td>
                   <td className="py-3 px-4 text-sm text-gray-600">

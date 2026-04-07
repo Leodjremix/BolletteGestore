@@ -33,10 +33,31 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
         "CREATE TABLE IF NOT EXISTS houses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
+            city TEXT,
             address TEXT
         )",
         [],
     )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )",
+        [],
+    )?;
+
+    // Seed default categories
+    let default_categories = vec![
+        "GAS", "ACQUA", "RIFIUTI", "TELEFONO", "AUTO",
+        "CONDOMINIO", "SPESE MEDICHE", "ACQUISTI", "TASSE", "VARIE"
+    ];
+    for cat in default_categories {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO categories (name) VALUES (?1)",
+            rusqlite::params![cat],
+        );
+    }
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS expenses (
@@ -46,23 +67,32 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
             date TEXT NOT NULL,
             due_date TEXT,
             payment_date TEXT,
+            period TEXT,
+            client_code TEXT,
             consumption REAL,
-            category TEXT NOT NULL,
+            category_id INTEGER,
             invoice_number TEXT,
             person_id INTEGER,
             house_id INTEGER,
             attachment_path TEXT,
+            notes TEXT,
+            FOREIGN KEY(category_id) REFERENCES categories(id),
             FOREIGN KEY(person_id) REFERENCES people(id),
             FOREIGN KEY(house_id) REFERENCES houses(id)
         )",
         [],
     )?;
 
-    // Simple migration for existing users from previous step
+    // Migrations for existing users
+    let _ = conn.execute("ALTER TABLE houses ADD COLUMN city TEXT", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN title TEXT NOT NULL DEFAULT 'Spesa'", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN due_date TEXT", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN payment_date TEXT", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN consumption REAL", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN period TEXT", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN client_code TEXT", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN category_id INTEGER", []);
+    let _ = conn.execute("ALTER TABLE expenses ADD COLUMN notes TEXT", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS energy_readings (
@@ -79,7 +109,32 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     Ok(conn)
 }
 
-use crate::models::{House, Person, Expense, EnergyReading};
+use crate::models::{House, Person, Expense, EnergyReading, Category};
+
+pub fn get_categories(conn: &Connection) -> Result<Vec<Category>> {
+    let mut stmt = conn.prepare("SELECT id, name FROM categories ORDER BY name ASC")?;
+    let cat_iter = stmt.query_map([], |row| {
+        Ok(Category {
+            id: row.get(0)?,
+            name: row.get(1)?,
+        })
+    })?;
+    let mut cats = Vec::new();
+    for c in cat_iter {
+        cats.push(c?);
+    }
+    Ok(cats)
+}
+
+pub fn add_category(conn: &Connection, name: &str) -> Result<i64> {
+    conn.execute("INSERT INTO categories (name) VALUES (?1)", rusqlite::params![name])?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn delete_category(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM categories WHERE id = ?1", rusqlite::params![id])?;
+    Ok(())
+}
 
 pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i64> {
     conn.execute(
@@ -119,18 +174,18 @@ pub fn get_people(conn: &Connection) -> Result<Vec<Person>> {
     Ok(people)
 }
 
-pub fn add_house(conn: &Connection, name: &str, address: Option<&str>) -> Result<i64> {
+pub fn add_house(conn: &Connection, name: &str, city: Option<&str>, address: Option<&str>) -> Result<i64> {
     conn.execute(
-        "INSERT INTO houses (name, address) VALUES (?1, ?2)",
-        rusqlite::params![name, address],
+        "INSERT INTO houses (name, city, address) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name, city, address],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_house(conn: &Connection, id: i64, name: &str, address: Option<&str>) -> Result<()> {
+pub fn update_house(conn: &Connection, id: i64, name: &str, city: Option<&str>, address: Option<&str>) -> Result<()> {
     conn.execute(
-        "UPDATE houses SET name = ?1, address = ?2 WHERE id = ?3",
-        rusqlite::params![name, address, id],
+        "UPDATE houses SET name = ?1, city = ?2, address = ?3 WHERE id = ?4",
+        rusqlite::params![name, city, address, id],
     )?;
     Ok(())
 }
@@ -141,12 +196,13 @@ pub fn delete_house(conn: &Connection, id: i64) -> Result<()> {
 }
 
 pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
-    let mut stmt = conn.prepare("SELECT id, name, address FROM houses")?;
+    let mut stmt = conn.prepare("SELECT id, name, city, address FROM houses")?;
     let house_iter = stmt.query_map([], |row| {
         Ok(House {
             id: row.get(0)?,
             name: row.get(1)?,
-            address: row.get(2)?,
+            city: row.get(2)?,
+            address: row.get(3)?,
         })
     })?;
 
@@ -164,17 +220,20 @@ pub fn add_expense(
     date: &str,
     due_date: Option<&str>,
     payment_date: Option<&str>,
+    period: Option<&str>,
+    client_code: Option<&str>,
     consumption: Option<f64>,
-    category: &str,
+    category_id: Option<i64>,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
     house_id: Option<i64>,
     attachment_path: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO expenses (title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path],
+        "INSERT INTO expenses (title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -187,17 +246,20 @@ pub fn update_expense(
     date: &str,
     due_date: Option<&str>,
     payment_date: Option<&str>,
+    period: Option<&str>,
+    client_code: Option<&str>,
     consumption: Option<f64>,
-    category: &str,
+    category_id: Option<i64>,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
     house_id: Option<i64>,
     attachment_path: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE expenses SET title = ?1, amount = ?2, date = ?3, due_date = ?4, payment_date = ?5, consumption = ?6, category = ?7, invoice_number = ?8, person_id = ?9, house_id = ?10, attachment_path = ?11
-         WHERE id = ?12",
-        rusqlite::params![title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path, id],
+        "UPDATE expenses SET title = ?1, amount = ?2, date = ?3, due_date = ?4, payment_date = ?5, period = ?6, client_code = ?7, consumption = ?8, category_id = ?9, invoice_number = ?10, person_id = ?11, house_id = ?12, attachment_path = ?13, notes = ?14
+         WHERE id = ?15",
+        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, id],
     )?;
     Ok(())
 }
@@ -209,7 +271,10 @@ pub fn delete_expense(conn: &Connection, id: i64) -> Result<()> {
 
 pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, amount, date, due_date, payment_date, consumption, category, invoice_number, person_id, house_id, attachment_path FROM expenses ORDER BY date DESC"
+        "SELECT e.id, e.title, e.amount, e.date, e.due_date, e.payment_date, e.period, e.client_code, e.consumption, e.category_id, c.name as category_name, e.invoice_number, e.person_id, e.house_id, e.attachment_path, e.notes
+         FROM expenses e
+         LEFT JOIN categories c ON e.category_id = c.id
+         ORDER BY e.date DESC"
     )?;
     let expense_iter = stmt.query_map([], |row| {
         Ok(Expense {
@@ -219,12 +284,16 @@ pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
             date: row.get(3)?,
             due_date: row.get(4)?,
             payment_date: row.get(5)?,
-            consumption: row.get(6)?,
-            category: row.get(7)?,
-            invoice_number: row.get(8)?,
-            person_id: row.get(9)?,
-            house_id: row.get(10)?,
-            attachment_path: row.get(11)?,
+            period: row.get(6)?,
+            client_code: row.get(7)?,
+            consumption: row.get(8)?,
+            category_id: row.get(9)?,
+            category_name: row.get(10)?,
+            invoice_number: row.get(11)?,
+            person_id: row.get(12)?,
+            house_id: row.get(13)?,
+            attachment_path: row.get(14)?,
+            notes: row.get(15)?,
         })
     })?;
 

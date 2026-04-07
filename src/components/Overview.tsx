@@ -3,18 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import Calendar from "react-calendar";
 import { Expense } from "./ExpensesManager";
 import { House } from "./HousesManager";
-import {
-  BanknotesIcon,
-  HomeModernIcon,
-  ExclamationCircleIcon,
-  CheckCircleIcon
-} from "@heroicons/react/24/outline";
+import { BanknotesIcon } from "@heroicons/react/24/outline";
 import ChartsAnalysis from "./ChartsAnalysis";
+import HouseCard from "./ui/HouseCard";
+import BillListItem from "./ui/BillListItem";
+import Modal from "./ui/Modal";
 
 export default function Overview() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
   const [date, setDate] = useState(new Date());
+
+  // Modals state for interaction preview
+  const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
+  const [selectedBill, setSelectedBill] = useState<Expense | null>(null);
 
   const fetchData = async () => {
     try {
@@ -43,10 +45,8 @@ export default function Overview() {
   };
 
   // 1. Top Level: Riepilogo spese per abitazione (Mese Corrente)
-  const getHouseMonthlyTotal = (houseId: number | null) => {
-    return expenses
-      .filter((e) => e.house_id === houseId && isCurrentMonth(e.date))
-      .reduce((acc, curr) => acc + curr.amount, 0);
+  const getUnpaidBillsCountForHouse = (houseId: number) => {
+    return expenses.filter((e) => e.house_id === houseId && !e.payment_date).length;
   };
 
   // Calcolo totale generico (per le spese non associate ad abitazioni o totale assoluto)
@@ -119,22 +119,16 @@ export default function Overview() {
           </div>
 
           {/* Cards Abitazioni */}
-          {houses.map((house) => {
-            const total = getHouseMonthlyTotal(house.id);
-            return (
-              <div key={house.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-gray-500 font-medium text-sm mb-1">{house.name}</p>
-                    <h3 className="text-2xl font-bold text-gray-800">€{total.toFixed(2)}</h3>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-primary rounded-xl">
-                    <HomeModernIcon className="w-6 h-6" />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {houses.map((house) => (
+            <HouseCard
+              key={house.id}
+              alias={house.name}
+              city={house.city || undefined}
+              street={house.address || undefined}
+              unpaidBillsCount={getUnpaidBillsCountForHouse(house.id)}
+              onClick={() => setSelectedHouse(house)}
+            />
+          ))}
         </div>
       </div>
 
@@ -148,30 +142,18 @@ export default function Overview() {
           </div>
 
           <div className="space-y-4">
-            {recentActivities.map((expense) => {
-              const isPaid = !!expense.payment_date;
-              const isOverdue = !isPaid && expense.due_date && new Date(expense.due_date) < new Date();
-
-              return (
-                <div key={expense.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-50 bg-gray-50 hover:bg-gray-100/50 transition">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-full ${isPaid ? 'bg-green-100 text-green-600' : isOverdue ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
-                      {isPaid ? <CheckCircleIcon className="w-6 h-6" /> : <ExclamationCircleIcon className="w-6 h-6" />}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-800">{expense.title}</p>
-                      <p className="text-sm text-gray-500">{new Date(expense.date).toLocaleDateString()} • {expense.category}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900">€{expense.amount.toFixed(2)}</p>
-                    <p className={`text-xs font-medium ${isPaid ? 'text-green-600' : isOverdue ? 'text-red-600' : 'text-yellow-600'}`}>
-                      {isPaid ? "Pagato" : isOverdue ? "Scaduto" : "Da Pagare"}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            {recentActivities.map((expense) => (
+              <BillListItem
+                key={expense.id}
+                title={expense.title}
+                category={expense.category_name || "Altro"}
+                date={expense.date}
+                dueDate={expense.due_date}
+                paymentDate={expense.payment_date}
+                amount={expense.amount}
+                onClick={() => setSelectedBill(expense)}
+              />
+            ))}
             {recentActivities.length === 0 && (
               <p className="text-gray-500 text-center py-4">Nessuna attività recente.</p>
             )}
@@ -219,6 +201,24 @@ export default function Overview() {
 
       {/* Advanced Charts Section */}
       <ChartsAnalysis />
+
+      {/* Modals for Interaction Preview */}
+      <Modal isOpen={!!selectedHouse} onClose={() => setSelectedHouse(null)} title={`Dettagli ${selectedHouse?.name}`}>
+        <div className="text-gray-600">
+          <p><strong>Città:</strong> {selectedHouse?.city || "-"}</p>
+          <p><strong>Indirizzo:</strong> {selectedHouse?.address || "-"}</p>
+          <p className="mt-4 text-sm bg-blue-50 p-4 rounded-xl text-blue-700">In una fase successiva, questo pannello permetterà la modifica e mostrerà le statistiche isolate dell'immobile.</p>
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={`Dettaglio Bolletta: ${selectedBill?.title}`}>
+        <div className="text-gray-600">
+          <p><strong>Importo:</strong> €{selectedBill?.amount.toFixed(2)}</p>
+          <p><strong>Categoria:</strong> {selectedBill?.category_name || "Altro"}</p>
+          <p><strong>Scadenza:</strong> {selectedBill?.due_date || "-"}</p>
+          <p className="mt-4 text-sm bg-blue-50 p-4 rounded-xl text-blue-700">In una fase successiva, cliccando qui si aprirà l'editor completo per modificare la bolletta o il suo stato di pagamento.</p>
+        </div>
+      </Modal>
 
     </div>
   );

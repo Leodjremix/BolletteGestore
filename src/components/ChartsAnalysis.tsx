@@ -54,7 +54,8 @@ export default function ChartsAnalysis() {
   const getCategoryData = () => {
     const categoryMap: Record<string, number> = {};
     expenses.forEach((e) => {
-      categoryMap[e.category] = (categoryMap[e.category] || 0) + e.amount;
+      const catName = e.category_name || "Altro";
+      categoryMap[catName] = (categoryMap[catName] || 0) + e.amount;
     });
 
     return Object.keys(categoryMap)

@@ -93,20 +93,20 @@ fn get_people(state: State<'_, AppState>) -> Result<Vec<models::Person>, String>
 }
 
 #[tauri::command]
-fn add_house(state: State<'_, AppState>, name: &str, address: Option<&str>) -> Result<i64, String> {
+fn add_house(state: State<'_, AppState>, name: &str, city: Option<&str>, address: Option<&str>) -> Result<i64, String> {
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::add_house(conn, name, address).map_err(|e| e.to_string())
+        db::add_house(conn, name, city, address).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
 }
 
 #[tauri::command]
-fn update_house(state: State<'_, AppState>, id: i64, name: &str, address: Option<&str>) -> Result<(), String> {
+fn update_house(state: State<'_, AppState>, id: i64, name: &str, city: Option<&str>, address: Option<&str>) -> Result<(), String> {
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::update_house(conn, id, name, address).map_err(|e| e.to_string())
+        db::update_house(conn, id, name, city, address).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -117,6 +117,36 @@ fn delete_house(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
         db::delete_house(conn, id).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn get_categories(state: State<'_, AppState>) -> Result<Vec<models::Category>, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::get_categories(conn).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn add_category(state: State<'_, AppState>, name: &str) -> Result<i64, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_category(conn, name).map_err(|e| e.to_string())
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn delete_category(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::delete_category(conn, id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -141,28 +171,50 @@ fn add_expense(
     date: &str,
     due_date: Option<&str>,
     payment_date: Option<&str>,
+    period: Option<&str>,
+    client_code: Option<&str>,
     consumption: Option<f64>,
-    category: &str,
+    category_id: Option<i64>,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
     house_id: Option<i64>,
     attachment_path: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<i64, String> {
 
-    // Auto-categorization logic
-    let mut final_category = category.to_string();
-    if final_category.is_empty() || final_category == "Altro" {
+    let db_conn = state.db_conn.lock().unwrap();
+    let conn = db_conn.as_ref().ok_or("Database not connected")?;
+
+    let mut final_category_id = category_id;
+
+    // Auto-categorization logic if no category was selected
+    if final_category_id.is_none() {
         let t_lower = title.to_lowercase();
-        if t_lower.contains("enel") || t_lower.contains("servizio elettrico") || t_lower.contains("luce") {
-            final_category = "Bolletta Luce".to_string();
+        let target_category = if t_lower.contains("enel") || t_lower.contains("servizio elettrico") || t_lower.contains("luce") {
+            Some("Bolletta Luce")
         } else if t_lower.contains("gas") || t_lower.contains("eni") || t_lower.contains("plenitude") {
-            final_category = "Bolletta Gas".to_string();
-        } else if t_lower.contains("tim") || t_lower.contains("vodafone") || t_lower.contains("fastweb") || t_lower.contains("wind") {
-            final_category = "Bolletta Internet".to_string();
+            Some("Bolletta Gas")
+        } else if t_lower.contains("tim") || t_lower.contains("vodafone") || t_lower.contains("fastweb") || t_lower.contains("wind") || t_lower.contains("internet") {
+            Some("Bolletta Internet")
         } else if t_lower.contains("acqua") || t_lower.contains("idrico") {
-            final_category = "Bolletta Acqua".to_string();
+            Some("Bolletta Acqua")
         } else if t_lower.contains("tari") || t_lower.contains("imu") || t_lower.contains("tassa") {
-            final_category = "Tasse".to_string();
+            Some("Tasse")
+        } else {
+            Some("VARIE")
+        };
+
+        if let Some(cat_name) = target_category {
+            // Find or create the category
+            let mut stmt = conn.prepare("SELECT id FROM categories WHERE name = ?1").unwrap();
+            let mut rows = stmt.query(rusqlite::params![cat_name]).unwrap();
+            if let Some(row) = rows.next().unwrap() {
+                final_category_id = Some(row.get(0).unwrap());
+            } else {
+                // If it doesn't exist, create it (shouldn't happen often due to seeds, but for Bolletta Luce etc. it might)
+                let _ = conn.execute("INSERT INTO categories (name) VALUES (?1)", rusqlite::params![cat_name]);
+                final_category_id = Some(conn.last_insert_rowid());
+            }
         }
     }
 
@@ -189,25 +241,23 @@ fn add_expense(
         }
     }
 
-    let db_conn = state.db_conn.lock().unwrap();
-    if let Some(conn) = db_conn.as_ref() {
-        db::add_expense(
-            conn,
-            title,
-            amount,
-            date,
-            due_date,
-            payment_date,
-            consumption,
-            &final_category,
-            invoice_number,
-            person_id,
-            house_id,
-            final_attachment_path.as_deref()
-        ).map_err(|e| e.to_string())
-    } else {
-        Err("Database not connected".into())
-    }
+    db::add_expense(
+        conn,
+        title,
+        amount,
+        date,
+        due_date,
+        payment_date,
+        period,
+        client_code,
+        consumption,
+        final_category_id,
+        invoice_number,
+        person_id,
+        house_id,
+        final_attachment_path.as_deref(),
+        notes
+    ).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -220,12 +270,15 @@ fn update_expense(
     date: &str,
     due_date: Option<&str>,
     payment_date: Option<&str>,
+    period: Option<&str>,
+    client_code: Option<&str>,
     consumption: Option<f64>,
-    category: &str,
+    category_id: Option<i64>,
     invoice_number: Option<&str>,
     person_id: Option<i64>,
     house_id: Option<i64>,
     attachment_path: Option<&str>,
+    notes: Option<&str>,
 ) -> Result<(), String> {
 
     let mut final_attachment_path = None;
@@ -270,12 +323,15 @@ fn update_expense(
             date,
             due_date,
             payment_date,
+            period,
+            client_code,
             consumption,
-            category,
+            category_id,
             invoice_number,
             person_id,
             house_id,
-            final_attachment_path.as_deref()
+            final_attachment_path.as_deref(),
+            notes
         ).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
@@ -385,7 +441,10 @@ pub fn run() {
             update_expense,
             delete_expense,
             update_energy_reading,
-            delete_energy_reading
+            delete_energy_reading,
+            get_categories,
+            add_category,
+            delete_category
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

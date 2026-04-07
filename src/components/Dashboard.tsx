@@ -4,11 +4,13 @@ import HousesManager from "./HousesManager";
 import ExpensesManager from "./ExpensesManager";
 import EnergyAnalysis from "./EnergyAnalysis";
 import Overview from "./Overview";
+import GlobalArchive from "./GlobalArchive";
+import SettingsManager from "./SettingsManager";
 import { useTheme } from "./ThemeProvider";
 import { MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "people" | "houses" | "expenses" | "energy">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "archive" | "expenses" | "people" | "houses" | "energy" | "settings">("overview");
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -25,15 +27,33 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab("overview")}
             className={`w-full text-left px-4 py-2 rounded-lg transition ${
-              activeTab === "overview" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "overview" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
             }`}
           >
             Dashboard
           </button>
           <button
+            onClick={() => setActiveTab("archive")}
+            className={`w-full text-left px-4 py-2 rounded-lg transition ${
+              activeTab === "archive" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
+            }`}
+          >
+            Archivio Bollette
+          </button>
+          <button
+            onClick={() => setActiveTab("expenses")}
+            className={`w-full text-left px-4 py-2 rounded-lg transition ${
+              activeTab === "expenses" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
+            }`}
+          >
+            Nuovo Inserimento
+          </button>
+          <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700"></div>
+          <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Impostazioni Base</p>
+          <button
             onClick={() => setActiveTab("people")}
             className={`w-full text-left px-4 py-2 rounded-lg transition ${
-              activeTab === "people" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "people" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
             }`}
           >
             Persone
@@ -41,23 +61,25 @@ export default function Dashboard() {
           <button
             onClick={() => setActiveTab("houses")}
             className={`w-full text-left px-4 py-2 rounded-lg transition ${
-              activeTab === "houses" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "houses" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
             }`}
           >
             Abitazioni
           </button>
           <button
-            onClick={() => setActiveTab("expenses")}
+            onClick={() => setActiveTab("settings")}
             className={`w-full text-left px-4 py-2 rounded-lg transition ${
-              activeTab === "expenses" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "settings" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
             }`}
           >
-            Spese e Documenti
+            Impostazioni Categorie
           </button>
+          <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700"></div>
+          <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Avanzato</p>
           <button
             onClick={() => setActiveTab("energy")}
             className={`w-full text-left px-4 py-2 rounded-lg transition ${
-              activeTab === "energy" ? "bg-blue-50 text-primary font-semibold" : "text-gray-600 hover:bg-gray-50"
+              activeTab === "energy" ? "bg-blue-50 text-primary font-semibold dark:bg-gray-700/50 dark:text-blue-400" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750"
             }`}
           >
             Analisi Energetica
@@ -68,9 +90,11 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-8">
         {activeTab === "overview" && <Overview />}
+        {activeTab === "archive" && <GlobalArchive />}
+        {activeTab === "expenses" && <ExpensesManager />}
         {activeTab === "people" && <PeopleManager />}
         {activeTab === "houses" && <HousesManager />}
-        {activeTab === "expenses" && <ExpensesManager />}
+        {activeTab === "settings" && <SettingsManager />}
         {activeTab === "energy" && <EnergyAnalysis />}
       </div>
     </div>

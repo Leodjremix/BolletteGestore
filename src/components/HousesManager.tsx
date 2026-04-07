@@ -5,6 +5,7 @@ import { TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
 export interface House {
   id: number;
   name: string;
+  city: string | null;
   address: string | null;
 }
 
