@@ -31,7 +31,12 @@ export interface Expense {
   created_by: number | null;
 }
 
-export default function ExpensesManager() {
+interface ExpensesManagerProps {
+  initialExpense?: Expense | null;
+  onClearInitial?: () => void;
+}
+
+export default function ExpensesManager({ initialExpense, onClearInitial }: ExpensesManagerProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
@@ -79,6 +84,13 @@ export default function ExpensesManager() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (initialExpense) {
+      handleEditClick(initialExpense);
+      if (onClearInitial) onClearInitial();
+    }
+  }, [initialExpense]);
 
   const handleSelectAttachment = async () => {
     try {

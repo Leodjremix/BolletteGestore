@@ -4,9 +4,13 @@ import { Expense, Category } from "./ExpensesManager";
 import { House } from "./HousesManager";
 import { Person } from "./PeopleManager";
 import Modal from "./ui/Modal";
-import { CheckCircleIcon, ClockIcon, PaperClipIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, ClockIcon, PaperClipIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
 
-export default function GlobalArchive() {
+interface GlobalArchiveProps {
+  onEditExpense: (expense: Expense) => void;
+}
+
+export default function GlobalArchive({ onEditExpense }: GlobalArchiveProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [houses, setHouses] = useState<House[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
@@ -44,6 +48,18 @@ export default function GlobalArchive() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleDeleteExpense = async (id: number) => {
+    if (confirm("Sei sicuro di voler eliminare questa bolletta/spesa?")) {
+      try {
+        await invoke("delete_expense", { id });
+        setSelectedBill(null);
+        fetchData();
+      } catch (err: any) {
+        alert("Errore durante l'eliminazione: " + err.toString());
+      }
+    }
+  };
 
   // Filter Logic
   const filteredExpenses = expenses.filter((expense) => {
@@ -278,7 +294,21 @@ export default function GlobalArchive() {
               </div>
             )}
 
-            <div className="mt-6 flex justify-end gap-3 pt-6 border-t border-gray-100">
+            <div className="mt-6 flex items-center justify-between pt-6 border-t border-gray-100">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onEditExpense(selectedBill)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-medium hover:bg-blue-100 transition"
+                >
+                  <PencilIcon className="w-4 h-4" /> Modifica
+                </button>
+                <button
+                  onClick={() => handleDeleteExpense(selectedBill.id)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-xl font-medium hover:bg-red-100 transition"
+                >
+                  <TrashIcon className="w-4 h-4" /> Elimina
+                </button>
+              </div>
               <button
                 onClick={() => setSelectedBill(null)}
                 className="px-6 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition"

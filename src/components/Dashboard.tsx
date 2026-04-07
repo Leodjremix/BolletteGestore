@@ -6,12 +6,19 @@ import EnergyAnalysis from "./EnergyAnalysis";
 import Overview from "./Overview";
 import GlobalArchive from "./GlobalArchive";
 import SettingsManager from "./SettingsManager";
+import { Expense } from "./ExpensesManager";
 import { useTheme } from "./ThemeProvider";
 import { MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "archive" | "expenses" | "people" | "houses" | "energy" | "settings">("overview");
+  const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
   const { theme, toggleTheme } = useTheme();
+
+  const handleEditExpense = (expense: Expense) => {
+    setExpenseToEdit(expense);
+    setActiveTab("expenses");
+  };
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-colors">
@@ -90,8 +97,13 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-8">
         {activeTab === "overview" && <Overview />}
-        {activeTab === "archive" && <GlobalArchive />}
-        {activeTab === "expenses" && <ExpensesManager />}
+        {activeTab === "archive" && <GlobalArchive onEditExpense={handleEditExpense} />}
+        {activeTab === "expenses" && (
+          <ExpensesManager
+            initialExpense={expenseToEdit}
+            onClearInitial={() => setExpenseToEdit(null)}
+          />
+        )}
         {activeTab === "people" && <PeopleManager />}
         {activeTab === "houses" && <HousesManager />}
         {activeTab === "settings" && <SettingsManager />}
