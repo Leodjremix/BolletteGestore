@@ -7,39 +7,15 @@ mod models;
 
 struct AppState {
     db_conn: Mutex<Option<rusqlite::Connection>>,
+    current_user_id: Mutex<Option<i64>>,
 }
 
+// Since the DB needs to be unlocked *before* we can read users,
+// we introduce an unlock command that uses the raw password for SQLCipher,
+// and then we verify the user credentials inside the decrypted DB.
 #[tauri::command]
-fn check_first_run(app_handle: AppHandle) -> bool {
-    !auth::has_master_password(&app_handle)
-}
-
-#[tauri::command]
-fn register(app_handle: AppHandle, password: &str) -> Result<bool, String> {
-    if auth::has_master_password(&app_handle) {
-        return Err("Already registered".into());
-    }
-
-    let hash = auth::hash_password(password);
-    let hash_path = auth::get_hash_path(&app_handle);
-    std::fs::write(hash_path, hash).map_err(|e| e.to_string())?;
-
-    Ok(true)
-}
-
-#[tauri::command]
-fn login(app_handle: AppHandle, state: State<'_, AppState>, password: &str) -> Result<bool, String> {
-    let hash_path = auth::get_hash_path(&app_handle);
-    let stored_hash = std::fs::read_to_string(hash_path).map_err(|e| e.to_string())?;
-
-    if !auth::verify_password(password, &stored_hash) {
-        return Ok(false);
-    }
-
-    // Pass is good, derive DB key and open connection
-    // For simplicity right now, using password as key directly
+fn unlock_db(app_handle: AppHandle, state: State<'_, AppState>, password: &str) -> Result<bool, String> {
     let db_path = db::get_db_path(&app_handle);
-
     match db::init_db(&db_path, password) {
         Ok(conn) => {
             let mut db_conn = state.db_conn.lock().unwrap();
@@ -53,10 +29,52 @@ fn login(app_handle: AppHandle, state: State<'_, AppState>, password: &str) -> R
 }
 
 #[tauri::command]
-fn add_person(state: State<'_, AppState>, name: &str, role: Option<&str>) -> Result<i64, String> {
+fn check_first_run(state: State<'_, AppState>) -> Result<bool, String> {
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::add_person(conn, name, role).map_err(|e| e.to_string())
+        Ok(!auth::has_users(conn))
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn register(state: State<'_, AppState>, username: &str, password: &str) -> Result<bool, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        // Removed the strict has_users check to allow multiple user registrations
+        let user_id = auth::register_user(conn, username, password)?;
+        let mut current_user = state.current_user_id.lock().unwrap();
+        *current_user = Some(user_id);
+        Ok(true)
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn login(state: State<'_, AppState>, username: &str, password: &str) -> Result<bool, String> {
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        match auth::verify_user_login(conn, username, password) {
+            Ok(user_id) => {
+                let mut current_user = state.current_user_id.lock().unwrap();
+                *current_user = Some(user_id);
+                Ok(true)
+            },
+            Err(e) => Err(e)
+        }
+    } else {
+        Err("Database not connected".into())
+    }
+}
+
+#[tauri::command]
+fn add_person(state: State<'_, AppState>, name: &str, role: Option<&str>) -> Result<i64, String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
+    let db_conn = state.db_conn.lock().unwrap();
+    if let Some(conn) = db_conn.as_ref() {
+        db::add_person(conn, name, role, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -64,9 +82,10 @@ fn add_person(state: State<'_, AppState>, name: &str, role: Option<&str>) -> Res
 
 #[tauri::command]
 fn update_person(state: State<'_, AppState>, id: i64, name: &str, role: Option<&str>) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::update_person(conn, id, name, role).map_err(|e| e.to_string())
+        db::update_person(conn, id, name, role, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -74,9 +93,10 @@ fn update_person(state: State<'_, AppState>, id: i64, name: &str, role: Option<&
 
 #[tauri::command]
 fn delete_person(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::delete_person(conn, id).map_err(|e| e.to_string())
+        db::delete_person(conn, id, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -94,9 +114,10 @@ fn get_people(state: State<'_, AppState>) -> Result<Vec<models::Person>, String>
 
 #[tauri::command]
 fn add_house(state: State<'_, AppState>, name: &str, city: Option<&str>, address: Option<&str>) -> Result<i64, String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::add_house(conn, name, city, address).map_err(|e| e.to_string())
+        db::add_house(conn, name, city, address, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -104,9 +125,10 @@ fn add_house(state: State<'_, AppState>, name: &str, city: Option<&str>, address
 
 #[tauri::command]
 fn update_house(state: State<'_, AppState>, id: i64, name: &str, city: Option<&str>, address: Option<&str>) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::update_house(conn, id, name, city, address).map_err(|e| e.to_string())
+        db::update_house(conn, id, name, city, address, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -114,9 +136,10 @@ fn update_house(state: State<'_, AppState>, id: i64, name: &str, city: Option<&s
 
 #[tauri::command]
 fn delete_house(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::delete_house(conn, id).map_err(|e| e.to_string())
+        db::delete_house(conn, id, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -134,9 +157,10 @@ fn get_categories(state: State<'_, AppState>) -> Result<Vec<models::Category>, S
 
 #[tauri::command]
 fn add_category(state: State<'_, AppState>, name: &str) -> Result<i64, String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::add_category(conn, name).map_err(|e| e.to_string())
+        db::add_category(conn, name, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -144,9 +168,10 @@ fn add_category(state: State<'_, AppState>, name: &str) -> Result<i64, String> {
 
 #[tauri::command]
 fn delete_category(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::delete_category(conn, id).map_err(|e| e.to_string())
+        db::delete_category(conn, id, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -182,6 +207,7 @@ fn add_expense(
     notes: Option<&str>,
 ) -> Result<i64, String> {
 
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     let conn = db_conn.as_ref().ok_or("Database not connected")?;
 
@@ -256,7 +282,8 @@ fn add_expense(
         person_id,
         house_id,
         final_attachment_path.as_deref(),
-        notes
+        notes,
+        user_id
     ).map_err(|e| e.to_string())
 }
 
@@ -281,6 +308,7 @@ fn update_expense(
     notes: Option<&str>,
 ) -> Result<(), String> {
 
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let mut final_attachment_path = None;
 
     // Copy the attachment to our secure app directory if provided
@@ -331,7 +359,8 @@ fn update_expense(
             person_id,
             house_id,
             final_attachment_path.as_deref(),
-            notes
+            notes,
+            user_id
         ).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
@@ -340,9 +369,10 @@ fn update_expense(
 
 #[tauri::command]
 fn delete_expense(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::delete_expense(conn, id).map_err(|e| e.to_string())
+        db::delete_expense(conn, id, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -367,9 +397,10 @@ fn add_energy_reading(
     electricity_kwh: f64,
     gas_smc: f64,
 ) -> Result<i64, String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::add_energy_reading(conn, date, temperature, humidity, electricity_kwh, gas_smc).map_err(|e| e.to_string())
+        db::add_energy_reading(conn, date, temperature, humidity, electricity_kwh, gas_smc, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -385,9 +416,10 @@ fn update_energy_reading(
     electricity_kwh: f64,
     gas_smc: f64,
 ) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::update_energy_reading(conn, id, date, temperature, humidity, electricity_kwh, gas_smc).map_err(|e| e.to_string())
+        db::update_energy_reading(conn, id, date, temperature, humidity, electricity_kwh, gas_smc, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -395,9 +427,10 @@ fn update_energy_reading(
 
 #[tauri::command]
 fn delete_energy_reading(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let user_id = state.current_user_id.lock().unwrap().ok_or("User not logged in")?;
     let db_conn = state.db_conn.lock().unwrap();
     if let Some(conn) = db_conn.as_ref() {
-        db::delete_energy_reading(conn, id).map_err(|e| e.to_string())
+        db::delete_energy_reading(conn, id, user_id).map_err(|e| e.to_string())
     } else {
         Err("Database not connected".into())
     }
@@ -418,11 +451,13 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             db_conn: Mutex::new(None),
+            current_user_id: Mutex::new(None),
         })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            unlock_db,
             check_first_run,
             register,
             login,

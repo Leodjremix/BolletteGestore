@@ -130,7 +130,36 @@ export default function EnergyAnalysis() {
     return [...data, prediction];
   };
 
+  const getYearOverYearData = () => {
+    const monthlyMap: Record<string, { month: string, currentElec: number, currentGas: number, prevElec: number, prevGas: number }> = {};
+    const currentYear = new Date().getFullYear();
+    const prevYear = currentYear - 1;
+
+    readings.forEach((r) => {
+      const d = new Date(r.date);
+      const y = d.getFullYear();
+
+      const monthLabel = d.toLocaleString('it-IT', { month: 'short' });
+
+      if (!monthlyMap[monthLabel]) {
+        monthlyMap[monthLabel] = { month: monthLabel, currentElec: 0, currentGas: 0, prevElec: 0, prevGas: 0 };
+      }
+
+      if (y === currentYear) {
+        monthlyMap[monthLabel].currentElec += r.electricity_kwh;
+        monthlyMap[monthLabel].currentGas += r.gas_smc;
+      } else if (y === prevYear) {
+        monthlyMap[monthLabel].prevElec += r.electricity_kwh;
+        monthlyMap[monthLabel].prevGas += r.gas_smc;
+      }
+    });
+
+    const sortedMonths = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+    return sortedMonths.map(m => monthlyMap[m]).filter(Boolean);
+  };
+
   const chartData = getPredictedData();
+  const yoyData = getYearOverYearData();
 
   return (
     <div className="bg-white p-6 rounded-xl shadow border border-gray-100">
@@ -282,6 +311,32 @@ export default function EnergyAnalysis() {
             </div>
           )}
           </div>
+
+          {/* YoY Chart Column */}
+          {yoyData.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-700">Comparazione Consumi Anno su Anno</h3>
+              <div className="h-96 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={yoyData}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="currentElec" stroke="#3b82f6" name={`Luce (kWh) ${new Date().getFullYear()}`} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" strokeDasharray="5 5" dataKey="prevElec" stroke="#93c5fd" name={`Luce (kWh) ${new Date().getFullYear()-1}`} strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="currentGas" stroke="#f59e0b" name={`Gas (Smc) ${new Date().getFullYear()}`} strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" strokeDasharray="5 5" dataKey="prevGas" stroke="#fcd34d" name={`Gas (Smc) ${new Date().getFullYear()-1}`} strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           {/* Table */}
           {readings.length > 0 && (

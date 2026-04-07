@@ -5,21 +5,7 @@ use argon2::{
     },
     Argon2
 };
-use std::fs;
-use std::path::PathBuf;
-
-pub fn get_hash_path(app_handle: &tauri::AppHandle) -> PathBuf {
-    use tauri::Manager;
-    let mut path = app_handle.path().app_data_dir().expect("Failed to get app data dir");
-    fs::create_dir_all(&path).expect("Failed to create app data dir");
-    path.push("master.hash");
-    path
-}
-
-pub fn has_master_password(app_handle: &tauri::AppHandle) -> bool {
-    let path = get_hash_path(app_handle);
-    path.exists()
-}
+use rusqlite::Connection;
 
 pub fn hash_password(password: &str) -> String {
     let salt = SaltString::generate(&mut OsRng);
@@ -40,4 +26,39 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
     let argon2 = Argon2::default();
     argon2.verify_password(password.as_bytes(), &parsed_hash).is_ok()
+}
+
+pub fn has_users(conn: &Connection) -> bool {
+    let count: i64 = conn.query_row("SELECT count(*) FROM users", [], |row| row.get(0)).unwrap_or(0);
+    count > 0
+}
+
+pub fn register_user(conn: &Connection, username: &str, password: &str) -> Result<i64, String> {
+    let hash = hash_password(password);
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES (?1, ?2, 'admin')",
+        rusqlite::params![username, hash],
+    ).map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn verify_user_login(conn: &Connection, username: &str, password: &str) -> Result<i64, String> {
+    let mut stmt = conn.prepare("SELECT id, password_hash FROM users WHERE username = ?1 AND is_deleted = 0").map_err(|e| e.to_string())?;
+
+    let user_row = stmt.query_row(rusqlite::params![username], |row| {
+        let id: i64 = row.get(0)?;
+        let hash: String = row.get(1)?;
+        Ok((id, hash))
+    });
+
+    match user_row {
+        Ok((id, hash)) => {
+            if verify_password(password, &hash) {
+                Ok(id)
+            } else {
+                Err("Invalid password".to_string())
+            }
+        },
+        Err(_) => Err("User not found".to_string())
+    }
 }

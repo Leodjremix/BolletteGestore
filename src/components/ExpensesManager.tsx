@@ -28,6 +28,7 @@ export interface Expense {
   house_id: number | null;
   attachment_path: string | null;
   notes: string | null;
+  created_by: number | null;
 }
 
 export default function ExpensesManager() {

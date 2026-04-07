@@ -66,8 +66,26 @@ export default function ChartsAnalysis() {
       }));
   };
 
+  // Prepare data for User Breakdown Pie Chart
+  const getUserData = () => {
+    const userMap: Record<string, number> = {};
+    expenses.forEach((e) => {
+      // In a real app we'd fetch the username, for now we show User ID or fallback
+      const userName = e.created_by ? `Utente ${e.created_by}` : "Sconosciuto";
+      userMap[userName] = (userMap[userName] || 0) + e.amount;
+    });
+
+    return Object.keys(userMap)
+      .sort((a, b) => userMap[b] - userMap[a])
+      .map((key) => ({
+        name: key,
+        value: Number(userMap[key].toFixed(2)),
+      }));
+  };
+
   const monthlyData = getMonthlyData();
   const categoryData = getCategoryData();
+  const userData = getUserData();
 
   if (expenses.length === 0) {
     return null;
@@ -77,7 +95,7 @@ export default function ChartsAnalysis() {
     <div className="mt-8 space-y-8 animate-fade-in">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Analisi Spese</h2>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
         {/* Bar Chart: Andamento Mensile */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
@@ -117,6 +135,34 @@ export default function ChartsAnalysis() {
                 >
                   {categoryData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(val: any) => `€${Number(val).toFixed(2)}`} />
+                <Legend verticalAlign="bottom" height={36} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Pie Chart: Ripartizione Utenti */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+          <h3 className="text-lg font-bold text-gray-800 mb-6 w-full text-left">Ripartizione per Utente</h3>
+          <div className="w-full h-80 flex justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={userData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={70}
+                  outerRadius={110}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={false}
+                >
+                  {userData.map((_entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[(index + 3) % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(val: any) => `€${Number(val).toFixed(2)}`} />

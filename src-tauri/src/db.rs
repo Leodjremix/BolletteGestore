@@ -21,10 +21,40 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
 
     // Create tables if they don't exist
     conn.execute(
+        "CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            previous_state TEXT,
+            timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS people (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            role TEXT
+            role TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            updated_by INTEGER,
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
         )",
         [],
     )?;
@@ -34,7 +64,12 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             city TEXT,
-            address TEXT
+            address TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            updated_by INTEGER,
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
         )",
         [],
     )?;
@@ -42,7 +77,12 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
+            name TEXT NOT NULL UNIQUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            updated_by INTEGER,
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
         )",
         [],
     )?;
@@ -76,14 +116,44 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
             house_id INTEGER,
             attachment_path TEXT,
             notes TEXT,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            updated_by INTEGER,
             FOREIGN KEY(category_id) REFERENCES categories(id),
             FOREIGN KEY(person_id) REFERENCES people(id),
-            FOREIGN KEY(house_id) REFERENCES houses(id)
+            FOREIGN KEY(house_id) REFERENCES houses(id),
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
         )",
         [],
     )?;
 
-    // Migrations for existing users
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS energy_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            temperature REAL NOT NULL,
+            humidity REAL NOT NULL,
+            electricity_kwh REAL NOT NULL,
+            gas_smc REAL NOT NULL,
+            is_deleted BOOLEAN NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            updated_by INTEGER,
+            FOREIGN KEY(created_by) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
+        )",
+        [],
+    )?;
+
+    // Apply Soft Delete & Audit Migrations for existing databases
+    let tables = ["people", "houses", "categories", "expenses", "energy_readings"];
+    for table in tables {
+        let _ = conn.execute(&format!("ALTER TABLE {} ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0", table), []);
+        let _ = conn.execute(&format!("ALTER TABLE {} ADD COLUMN created_by INTEGER", table), []);
+        let _ = conn.execute(&format!("ALTER TABLE {} ADD COLUMN updated_by INTEGER", table), []);
+    }
+
+    // Previous migrations (safe to fail if already applied)
     let _ = conn.execute("ALTER TABLE houses ADD COLUMN city TEXT", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN title TEXT NOT NULL DEFAULT 'Spesa'", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN due_date TEXT", []);
@@ -94,29 +164,20 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN category_id INTEGER", []);
     let _ = conn.execute("ALTER TABLE expenses ADD COLUMN notes TEXT", []);
 
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS energy_readings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            temperature REAL NOT NULL,
-            humidity REAL NOT NULL,
-            electricity_kwh REAL NOT NULL,
-            gas_smc REAL NOT NULL
-        )",
-        [],
-    )?;
-
     Ok(conn)
 }
 
 use crate::models::{House, Person, Expense, EnergyReading, Category};
 
 pub fn get_categories(conn: &Connection) -> Result<Vec<Category>> {
-    let mut stmt = conn.prepare("SELECT id, name FROM categories ORDER BY name ASC")?;
+    let mut stmt = conn.prepare("SELECT id, name, is_deleted, created_by, updated_by FROM categories WHERE is_deleted = 0 ORDER BY name ASC")?;
     let cat_iter = stmt.query_map([], |row| {
         Ok(Category {
             id: row.get(0)?,
             name: row.get(1)?,
+            is_deleted: row.get(2)?,
+            created_by: row.get(3)?,
+            updated_by: row.get(4)?,
         })
     })?;
     let mut cats = Vec::new();
@@ -126,44 +187,47 @@ pub fn get_categories(conn: &Connection) -> Result<Vec<Category>> {
     Ok(cats)
 }
 
-pub fn add_category(conn: &Connection, name: &str) -> Result<i64> {
-    conn.execute("INSERT INTO categories (name) VALUES (?1)", rusqlite::params![name])?;
+pub fn add_category(conn: &Connection, name: &str, user_id: i64) -> Result<i64> {
+    conn.execute("INSERT INTO categories (name, created_by) VALUES (?1, ?2)", rusqlite::params![name, user_id])?;
     Ok(conn.last_insert_rowid())
 }
 
-pub fn delete_category(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM categories WHERE id = ?1", rusqlite::params![id])?;
+pub fn delete_category(conn: &Connection, id: i64, user_id: i64) -> Result<()> {
+    conn.execute("UPDATE categories SET is_deleted = 1, updated_by = ?1 WHERE id = ?2", rusqlite::params![user_id, id])?;
     Ok(())
 }
 
-pub fn add_person(conn: &Connection, name: &str, role: Option<&str>) -> Result<i64> {
+pub fn add_person(conn: &Connection, name: &str, role: Option<&str>, user_id: i64) -> Result<i64> {
     conn.execute(
-        "INSERT INTO people (name, role) VALUES (?1, ?2)",
-        rusqlite::params![name, role],
+        "INSERT INTO people (name, role, created_by) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name, role, user_id],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_person(conn: &Connection, id: i64, name: &str, role: Option<&str>) -> Result<()> {
+pub fn update_person(conn: &Connection, id: i64, name: &str, role: Option<&str>, user_id: i64) -> Result<()> {
     conn.execute(
-        "UPDATE people SET name = ?1, role = ?2 WHERE id = ?3",
-        rusqlite::params![name, role, id],
+        "UPDATE people SET name = ?1, role = ?2, updated_by = ?3 WHERE id = ?4",
+        rusqlite::params![name, role, user_id, id],
     )?;
     Ok(())
 }
 
-pub fn delete_person(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM people WHERE id = ?1", rusqlite::params![id])?;
+pub fn delete_person(conn: &Connection, id: i64, user_id: i64) -> Result<()> {
+    conn.execute("UPDATE people SET is_deleted = 1, updated_by = ?1 WHERE id = ?2", rusqlite::params![user_id, id])?;
     Ok(())
 }
 
 pub fn get_people(conn: &Connection) -> Result<Vec<Person>> {
-    let mut stmt = conn.prepare("SELECT id, name, role FROM people")?;
+    let mut stmt = conn.prepare("SELECT id, name, role, is_deleted, created_by, updated_by FROM people WHERE is_deleted = 0")?;
     let person_iter = stmt.query_map([], |row| {
         Ok(Person {
             id: row.get(0)?,
             name: row.get(1)?,
             role: row.get(2)?,
+            is_deleted: row.get(3)?,
+            created_by: row.get(4)?,
+            updated_by: row.get(5)?,
         })
     })?;
 
@@ -174,35 +238,38 @@ pub fn get_people(conn: &Connection) -> Result<Vec<Person>> {
     Ok(people)
 }
 
-pub fn add_house(conn: &Connection, name: &str, city: Option<&str>, address: Option<&str>) -> Result<i64> {
+pub fn add_house(conn: &Connection, name: &str, city: Option<&str>, address: Option<&str>, user_id: i64) -> Result<i64> {
     conn.execute(
-        "INSERT INTO houses (name, city, address) VALUES (?1, ?2, ?3)",
-        rusqlite::params![name, city, address],
+        "INSERT INTO houses (name, city, address, created_by) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![name, city, address, user_id],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_house(conn: &Connection, id: i64, name: &str, city: Option<&str>, address: Option<&str>) -> Result<()> {
+pub fn update_house(conn: &Connection, id: i64, name: &str, city: Option<&str>, address: Option<&str>, user_id: i64) -> Result<()> {
     conn.execute(
-        "UPDATE houses SET name = ?1, city = ?2, address = ?3 WHERE id = ?4",
-        rusqlite::params![name, city, address, id],
+        "UPDATE houses SET name = ?1, city = ?2, address = ?3, updated_by = ?4 WHERE id = ?5",
+        rusqlite::params![name, city, address, user_id, id],
     )?;
     Ok(())
 }
 
-pub fn delete_house(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM houses WHERE id = ?1", rusqlite::params![id])?;
+pub fn delete_house(conn: &Connection, id: i64, user_id: i64) -> Result<()> {
+    conn.execute("UPDATE houses SET is_deleted = 1, updated_by = ?1 WHERE id = ?2", rusqlite::params![user_id, id])?;
     Ok(())
 }
 
 pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
-    let mut stmt = conn.prepare("SELECT id, name, city, address FROM houses")?;
+    let mut stmt = conn.prepare("SELECT id, name, city, address, is_deleted, created_by, updated_by FROM houses WHERE is_deleted = 0")?;
     let house_iter = stmt.query_map([], |row| {
         Ok(House {
             id: row.get(0)?,
             name: row.get(1)?,
             city: row.get(2)?,
             address: row.get(3)?,
+            is_deleted: row.get(4)?,
+            created_by: row.get(5)?,
+            updated_by: row.get(6)?,
         })
     })?;
 
@@ -211,6 +278,15 @@ pub fn get_houses(conn: &Connection) -> Result<Vec<House>> {
         houses.push(house?);
     }
     Ok(houses)
+}
+
+// --- AUDIT LOG HELPERS ---
+fn create_audit_log(conn: &Connection, user_id: i64, entity_type: &str, entity_id: i64, action: &str, previous_state: Option<String>) -> Result<()> {
+    conn.execute(
+        "INSERT INTO audit_logs (user_id, entity_type, entity_id, action, previous_state) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![user_id, entity_type, entity_id, action, previous_state],
+    )?;
+    Ok(())
 }
 
 pub fn add_expense(
@@ -229,13 +305,16 @@ pub fn add_expense(
     house_id: Option<i64>,
     attachment_path: Option<&str>,
     notes: Option<&str>,
+    user_id: i64,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO expenses (title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes],
+        "INSERT INTO expenses (title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, created_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, user_id],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    let _ = create_audit_log(conn, user_id, "Expense", id, "CREATE", None);
+    Ok(id)
 }
 
 pub fn update_expense(
@@ -255,25 +334,33 @@ pub fn update_expense(
     house_id: Option<i64>,
     attachment_path: Option<&str>,
     notes: Option<&str>,
+    user_id: i64,
 ) -> Result<()> {
+
+    // In a real app, serialize the old record to JSON here for the audit log
+    // let old_expense = get_expense_by_id(...);
+    let _ = create_audit_log(conn, user_id, "Expense", id, "UPDATE", Some("{ \"note\": \"Previous state JSON could go here\" }".to_string()));
+
     conn.execute(
-        "UPDATE expenses SET title = ?1, amount = ?2, date = ?3, due_date = ?4, payment_date = ?5, period = ?6, client_code = ?7, consumption = ?8, category_id = ?9, invoice_number = ?10, person_id = ?11, house_id = ?12, attachment_path = ?13, notes = ?14
-         WHERE id = ?15",
-        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, id],
+        "UPDATE expenses SET title = ?1, amount = ?2, date = ?3, due_date = ?4, payment_date = ?5, period = ?6, client_code = ?7, consumption = ?8, category_id = ?9, invoice_number = ?10, person_id = ?11, house_id = ?12, attachment_path = ?13, notes = ?14, updated_by = ?15
+         WHERE id = ?16",
+        rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, user_id, id],
     )?;
     Ok(())
 }
 
-pub fn delete_expense(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM expenses WHERE id = ?1", rusqlite::params![id])?;
+pub fn delete_expense(conn: &Connection, id: i64, user_id: i64) -> Result<()> {
+    let _ = create_audit_log(conn, user_id, "Expense", id, "SOFT_DELETE", None);
+    conn.execute("UPDATE expenses SET is_deleted = 1, updated_by = ?1 WHERE id = ?2", rusqlite::params![user_id, id])?;
     Ok(())
 }
 
 pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
     let mut stmt = conn.prepare(
-        "SELECT e.id, e.title, e.amount, e.date, e.due_date, e.payment_date, e.period, e.client_code, e.consumption, e.category_id, c.name as category_name, e.invoice_number, e.person_id, e.house_id, e.attachment_path, e.notes
+        "SELECT e.id, e.title, e.amount, e.date, e.due_date, e.payment_date, e.period, e.client_code, e.consumption, e.category_id, c.name as category_name, e.invoice_number, e.person_id, e.house_id, e.attachment_path, e.notes, e.is_deleted, e.created_by, e.updated_by
          FROM expenses e
          LEFT JOIN categories c ON e.category_id = c.id
+         WHERE e.is_deleted = 0
          ORDER BY e.date DESC"
     )?;
     let expense_iter = stmt.query_map([], |row| {
@@ -294,6 +381,9 @@ pub fn get_expenses(conn: &Connection) -> Result<Vec<Expense>> {
             house_id: row.get(13)?,
             attachment_path: row.get(14)?,
             notes: row.get(15)?,
+            is_deleted: row.get(16)?,
+            created_by: row.get(17)?,
+            updated_by: row.get(18)?,
         })
     })?;
 
@@ -311,11 +401,12 @@ pub fn add_energy_reading(
     humidity: f64,
     electricity_kwh: f64,
     gas_smc: f64,
+    user_id: i64,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO energy_readings (date, temperature, humidity, electricity_kwh, gas_smc)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc],
+        "INSERT INTO energy_readings (date, temperature, humidity, electricity_kwh, gas_smc, created_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc, user_id],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -328,22 +419,23 @@ pub fn update_energy_reading(
     humidity: f64,
     electricity_kwh: f64,
     gas_smc: f64,
+    user_id: i64,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE energy_readings SET date = ?1, temperature = ?2, humidity = ?3, electricity_kwh = ?4, gas_smc = ?5 WHERE id = ?6",
-        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc, id],
+        "UPDATE energy_readings SET date = ?1, temperature = ?2, humidity = ?3, electricity_kwh = ?4, gas_smc = ?5, updated_by = ?6 WHERE id = ?7",
+        rusqlite::params![date, temperature, humidity, electricity_kwh, gas_smc, user_id, id],
     )?;
     Ok(())
 }
 
-pub fn delete_energy_reading(conn: &Connection, id: i64) -> Result<()> {
-    conn.execute("DELETE FROM energy_readings WHERE id = ?1", rusqlite::params![id])?;
+pub fn delete_energy_reading(conn: &Connection, id: i64, user_id: i64) -> Result<()> {
+    conn.execute("UPDATE energy_readings SET is_deleted = 1, updated_by = ?1 WHERE id = ?2", rusqlite::params![user_id, id])?;
     Ok(())
 }
 
 pub fn get_energy_readings(conn: &Connection) -> Result<Vec<EnergyReading>> {
     let mut stmt = conn.prepare(
-        "SELECT id, date, temperature, humidity, electricity_kwh, gas_smc FROM energy_readings ORDER BY date ASC"
+        "SELECT id, date, temperature, humidity, electricity_kwh, gas_smc, is_deleted, created_by, updated_by FROM energy_readings WHERE is_deleted = 0 ORDER BY date ASC"
     )?;
     let reading_iter = stmt.query_map([], |row| {
         Ok(EnergyReading {
@@ -353,6 +445,9 @@ pub fn get_energy_readings(conn: &Connection) -> Result<Vec<EnergyReading>> {
             humidity: row.get(3)?,
             electricity_kwh: row.get(4)?,
             gas_smc: row.get(5)?,
+            is_deleted: row.get(6)?,
+            created_by: row.get(7)?,
+            updated_by: row.get(8)?,
         })
     })?;
 
