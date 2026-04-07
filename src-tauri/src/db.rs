@@ -110,6 +110,7 @@ pub fn init_db(db_path: &PathBuf, key: &str) -> Result<Connection> {
             period TEXT,
             client_code TEXT,
             consumption REAL,
+            category TEXT NOT NULL DEFAULT '',
             category_id INTEGER,
             invoice_number TEXT,
             person_id INTEGER,
@@ -307,9 +308,11 @@ pub fn add_expense(
     notes: Option<&str>,
     user_id: i64,
 ) -> Result<i64> {
+    // Because the old schema required 'category' NOT NULL, we pass an empty string to satisfy it.
+    // The actual category is now tracked via category_id.
     conn.execute(
-        "INSERT INTO expenses (title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, created_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        "INSERT INTO expenses (title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, created_by, category)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, '')",
         rusqlite::params![title, amount, date, due_date, payment_date, period, client_code, consumption, category_id, invoice_number, person_id, house_id, attachment_path, notes, user_id],
     )?;
     let id = conn.last_insert_rowid();

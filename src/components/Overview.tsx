@@ -205,19 +205,105 @@ export default function Overview() {
       {/* Modals for Interaction Preview */}
       <Modal isOpen={!!selectedHouse} onClose={() => setSelectedHouse(null)} title={`Dettagli ${selectedHouse?.name}`}>
         <div className="text-gray-600">
-          <p><strong>Città:</strong> {selectedHouse?.city || "-"}</p>
-          <p><strong>Indirizzo:</strong> {selectedHouse?.address || "-"}</p>
-          <p className="mt-4 text-sm bg-blue-50 p-4 rounded-xl text-blue-700">In una fase successiva, questo pannello permetterà la modifica e mostrerà le statistiche isolate dell'immobile.</p>
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+              <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">Città</p>
+              <p className="font-medium text-gray-900">{selectedHouse?.city || "Non specificata"}</p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+              <p className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-1">Indirizzo</p>
+              <p className="font-medium text-gray-900">{selectedHouse?.address || "Non specificato"}</p>
+            </div>
+          </div>
+
+          <h4 className="text-lg font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">Statistiche e Bollette (Sempre)</h4>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+              <span className="font-medium text-blue-800">Spesa Totale Storica</span>
+              <span className="font-bold text-blue-900">
+                €{expenses.filter(e => e.house_id === selectedHouse?.id).reduce((a, b) => a + b.amount, 0).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center bg-red-50 p-3 rounded-lg border border-red-100">
+              <span className="font-medium text-red-800">Da Pagare in Scadenza</span>
+              <span className="font-bold text-red-900">
+                {selectedHouse && getUnpaidBillsCountForHouse(selectedHouse.id)}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-gray-100 pt-4">
+            <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Ultime 3 Spese Associate</h4>
+            <ul className="space-y-2">
+              {expenses
+                .filter(e => e.house_id === selectedHouse?.id)
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                .slice(0, 3)
+                .map(exp => (
+                  <li key={exp.id} className="flex justify-between items-center text-sm border-b border-gray-50 pb-2">
+                    <div>
+                      <p className="font-medium text-gray-800">{exp.title}</p>
+                      <p className="text-xs text-gray-500">{new Date(exp.date).toLocaleDateString()}</p>
+                    </div>
+                    <span className="font-bold text-gray-900">€{exp.amount.toFixed(2)}</span>
+                  </li>
+              ))}
+              {expenses.filter(e => e.house_id === selectedHouse?.id).length === 0 && (
+                <li className="text-sm text-gray-400">Nessuna spesa associata a questo immobile.</li>
+              )}
+            </ul>
+          </div>
         </div>
       </Modal>
 
-      <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={`Dettaglio Bolletta: ${selectedBill?.title}`}>
-        <div className="text-gray-600">
-          <p><strong>Importo:</strong> €{selectedBill?.amount.toFixed(2)}</p>
-          <p><strong>Categoria:</strong> {selectedBill?.category_name || "Altro"}</p>
-          <p><strong>Scadenza:</strong> {selectedBill?.due_date || "-"}</p>
-          <p className="mt-4 text-sm bg-blue-50 p-4 rounded-xl text-blue-700">In una fase successiva, cliccando qui si aprirà l'editor completo per modificare la bolletta o il suo stato di pagamento.</p>
-        </div>
+      <Modal isOpen={!!selectedBill} onClose={() => setSelectedBill(null)} title={`Dettaglio Bolletta`}>
+        {selectedBill && (
+          <div className="space-y-4 text-gray-700">
+            <div className="bg-gray-50 p-4 rounded-xl flex items-center justify-between border border-gray-100">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{selectedBill.title}</h3>
+                <p className="text-sm text-gray-500">{selectedBill.category_name || "Nessuna categoria"}</p>
+              </div>
+              <p className="text-2xl font-bold text-primary">€{selectedBill.amount.toFixed(2)}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Emissione</p>
+                <p className="font-medium">{new Date(selectedBill.date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Scadenza</p>
+                <p className="font-medium">{selectedBill.due_date ? new Date(selectedBill.due_date).toLocaleDateString() : "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Pagamento</p>
+                <p className="font-medium">
+                  {selectedBill.payment_date
+                    ? <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded-md">{new Date(selectedBill.payment_date).toLocaleDateString()}</span>
+                    : <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Da Saldare</span>
+                  }
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Consumo</p>
+                <p className="font-medium">{selectedBill.consumption ? `${selectedBill.consumption}` : "-"}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-100 flex flex-col gap-2">
+              <p className="text-xs text-gray-500 text-center">
+                Per modificare lo stato di pagamento o alterare la bolletta, utilizza la tabella completa nella scheda <strong>"Archivio Bollette"</strong>.
+              </p>
+              <button
+                onClick={() => setSelectedBill(null)}
+                className="mt-2 w-full py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition"
+              >
+                Chiudi Visualizzazione
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
     </div>
